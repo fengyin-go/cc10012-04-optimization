@@ -1,11 +1,36 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  CHART_REFRESH_FIELDS,
+  CHART_REFRESH_NAME,
+  chartRefreshRows,
+  resetChartRefresh,
+  syncChartConfig,
+} from '@/api/chart-refresh'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
 
+/** 图表刷新结果字段明细不是登记模块，但列表/筛选/导出都复用同一套服务。 */
+export const CHART_REFRESH_MODULE = 'chart-refresh'
+
+const CHART_REFRESH_META: ModuleMeta = {
+  key: CHART_REFRESH_MODULE,
+  name: CHART_REFRESH_NAME,
+  entity: CHART_REFRESH_NAME,
+  desc: '按坐标维度复用已完成的图表聚合，明细中标明时间窗口、坐标值与数据源版本。',
+  fields: CHART_REFRESH_FIELDS,
+  statuses: ['已归档'],
+  actions: [],
+  actionTargets: {},
+  metrics: [],
+}
+
 export function moduleMeta(key: string): ModuleMeta {
+  if (key === CHART_REFRESH_MODULE) {
+    return CHART_REFRESH_META
+  }
   const meta = MODULE_BY_KEY.get(key)
   if (!meta) {
     throw new Error(`没有登记名为 ${key} 的业务模块`)
@@ -24,7 +49,8 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
 }
 
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
-  const matched = filterRows(listRows(key), filters)
+  const source = key === CHART_REFRESH_MODULE ? chartRefreshRows() : listRows(key)
+  const matched = filterRows(source, filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
@@ -53,19 +79,28 @@ export function runAction(key: string, id: number, action: string): ActionResult
   const next = [...rows]
   next[index] = updated
   saveRows(key, next)
+  if (key === 'chart') {
+    // 归档里的图表配置跟着配置变更走，但已展示快照仍保留原窗口与版本。
+    syncChartConfig(updated)
+  }
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
 }
 
 export function resetModule(key: string): PageResult {
+  if (key === CHART_REFRESH_MODULE) {
+    resetChartRefresh()
+    return listEntries(key)
+  }
   resetRows(key)
   return listEntries(key)
 }
 
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
+  const source = key === CHART_REFRESH_MODULE ? chartRefreshRows() : listRows(key)
   const header = ['编号', ...meta.fields, '当前状态']
   const lines = [header.join(',')]
-  for (const row of listRows(key)) {
+  for (const row of source) {
     lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
   }
   return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }

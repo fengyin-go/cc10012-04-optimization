@@ -3,6 +3,8 @@ import type { EntryRow } from './types'
 
 // 本地持久化：数据放在 localStorage 里，刷新、关掉再打开都还在。
 const STORAGE_KEY = 'data-explore-studio:entries'
+// 图表刷新状态单独存一份：图表刷新结果字段明细随文件保存，版本与窗口都跟着走。
+const CHART_REFRESH_KEY = 'data-explore-studio:chart-refresh'
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -28,6 +30,8 @@ function readStorage(): Record<string, EntryRow[]> {
 }
 
 let cache: Record<string, EntryRow[]> | null = null
+let chartCache: unknown = null
+let chartLoaded = false
 
 export function allRows(): Record<string, EntryRow[]> {
   if (cache === null) {
@@ -56,4 +60,53 @@ export function resetRows(key: string): EntryRow[] {
 
 export function storageKey(): string {
   return STORAGE_KEY
+}
+
+/** 读取图表刷新状态；没有落盘时返回 null，由调用方给出初始状态。 */
+export function readChartRefreshState<T>(): T | null {
+  if (chartLoaded) {
+    return (chartCache as T | null) ?? null
+  }
+  return rereadChartRefreshState<T>()
+}
+
+/** 强制从存储重读一次图表刷新状态，用于跨标签页的并发核对。 */
+export function rereadChartRefreshState<T>(): T | null {
+  chartLoaded = true
+  chartCache = null
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null
+  }
+  const raw = window.localStorage.getItem(CHART_REFRESH_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    chartCache = JSON.parse(raw)
+  } catch {
+    window.localStorage.removeItem(CHART_REFRESH_KEY)
+    chartCache = null
+  }
+  return (chartCache as T | null) ?? null
+}
+
+/** 唯一落盘口：图表刷新结果字段明细的版本随文件一起写入。 */
+export function saveChartRefreshState<T>(state: T): void {
+  chartLoaded = true
+  chartCache = clone(state)
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(CHART_REFRESH_KEY, JSON.stringify(state))
+  }
+}
+
+export function clearChartRefreshState(): void {
+  chartLoaded = true
+  chartCache = null
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(CHART_REFRESH_KEY)
+  }
+}
+
+export function chartRefreshStorageKey(): string {
+  return CHART_REFRESH_KEY
 }

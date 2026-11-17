@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Overview from '@/views/Overview.vue'
 const Query = () => import('@/views/query/index.vue')
 const Chart = () => import('@/views/chart/index.vue')
+const ChartRefresh = () => import('@/views/chart-refresh/index.vue')
 const Source = () => import('@/views/source/index.vue')
 const Aggregate = () => import('@/views/aggregate/index.vue')
 const Filter = () => import('@/views/filter/index.vue')
@@ -26,6 +27,7 @@ const router = createRouter({
     { path: '/', name: 'overview', component: Overview },
     { path: '/query', name: 'query', component: Query },
     { path: '/chart', name: 'chart', component: Chart },
+    { path: '/chart-refresh', name: 'chart-refresh', component: ChartRefresh },
     { path: '/source', name: 'source', component: Source },
     { path: '/aggregate', name: 'aggregate', component: Aggregate },
     { path: '/filter', name: 'filter', component: Filter },

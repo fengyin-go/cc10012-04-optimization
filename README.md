@@ -14,6 +14,7 @@
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
 │   ├── src/views/            每个业务模块一个页面
 │   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
+│   ├── src/api/chart-refresh.ts   图表刷新引擎：按坐标复用聚合、明细归档与落盘
 │   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
 │   ├── src/stores/           会话与筛选状态
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
@@ -61,14 +62,32 @@ npm run build
 | 数据分享 | `share` | 分享链接 | 链接编号、目标数据集、访问密码 |
 | 定时任务 | `schedule` | 调度配置 | 配置编号、关联任务、调度表达式 |
 
+图表刷新另有一份结果视图（`/chart-refresh`），页面上按字段检索、筛选并定位到单个明细。
+
+## 图表刷新与图表刷新结果字段明细
+
+- 坐标维度 = 数据来源 + X 轴字段 + Y 轴字段。到期刷新时，同坐标、同时间窗口、同数据源版本的图表
+  合并成一个分组，**聚合只计算一次**，其余图表复用同一份图表刷新结果字段明细；明细里记录
+  `复用次数`、`坐标值`、`数据源版本`、`明细版本` 与 `时间窗口`，可逐条核对。
+- 同一时刻到期的请求合并成一批（`BATCH-xxxx`），同一分钟内不会重复生成结果；并发执行时只有一份
+  明细被认可，重复的会并入先落盘的那份并在复用记录里写明来源取舍。
+- 修改某张图的刷新间隔只影响它后续的到期任务：已到期的照常执行一次，未到期的按新间隔重排，
+  已展示快照继续可用；其他图表不受影响。
+- 刷新间隔与数据源版本在到期点同时变化时，无论先改哪个，都按批次开始时固定的窗口与版本执行，
+  旧窗口的明细保留旧版本，新窗口明细标明采用的窗口，不会把旧坐标值和新版本混在一起。
+- 明细随本地文件保存（`data-explore-studio:chart-refresh`），里面同时归档图表配置与图表快照；
+  列表、筛选、导出共用同一份投影，三者条数一致。
+
 ## 约定
 
 - 每个模块的页面在 `frontend/src/views/<模块>/index.vue`，页面只负责渲染，读写统一走
   `frontend/src/api/local-service.ts`。
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
-- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `data-explore-studio:entries` 这一项，或调用 `resetModule(模块)`。
+- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。图表刷新的落盘口只有一个：
+  `api/chart-refresh.ts` 的 `persist()`，明细版本随文件一起保存。
+- 想回到初始数据：清掉浏览器里 `data-explore-studio:entries` 这一项，或调用 `resetModule(模块)`；
+  想重算图表刷新明细，清掉 `data-explore-studio:chart-refresh` 这一项。
 
 领域：数据工程
 子方向：数据分析与数据应用
